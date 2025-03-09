@@ -1,6 +1,6 @@
 # FermWise IoT Device Integration
 
-This directory contains scripts and examples for integrating IoT devices with the FermWise platform. These scripts demonstrate how to implement the "Take Reading" functionality for your IoT devices.
+This directory contains scripts and examples for integrating IoT devices with the FermWise platform. This script demonstrates how to implement the "Take Reading" functionality for your IoT devices.
 
 ## API Endpoint
 
@@ -54,9 +54,7 @@ All sensor readings are optional, but at least one should be provided. The `seri
 }
 ```
 
-## Test Scripts
-
-### JavaScript Test Script
+## JavaScript Test Script
 
 The `test-device-readings.js` script demonstrates how to send sensor readings using JavaScript/Node.js:
 
@@ -78,47 +76,30 @@ The `test-device-readings.js` script demonstrates how to send sensor readings us
    node test-device-readings.js
    ```
 
-### Python Client
+## Integrating with Real IoT Devices
 
-The `iot_device_client.py` script provides a more complete example that could run on an actual IoT device:
+To integrate with real IoT devices, you'll need to:
 
-1. Install dependencies:
-   ```
-   pip install requests
-   ```
+1. Modify the `generateSensorReadings()` function to get actual readings from your sensors
+2. Update the serial number to match your device's actual serial number
+3. Ensure your device has network connectivity to reach the API endpoint
 
-2. Update the configuration in the script with your device serial number:
-   ```python
-   CONFIG = {
-       "api_url": "http://localhost:8080",      # Update with your API URL
-       "serial_number": "FW-DEVICE-12345"       # Update with your device serial number
-   }
-   ```
+Example implementation for a real device:
 
-3. Run the script:
-   ```
-   python iot_device_client.py
-   ```
-
-   This will display a menu where you can select "Take Reading" to send sensor data to the API.
-
-## Integrating with Real Sensors
-
-To integrate with real sensors, modify the reading functions in the Python script:
-
-```python
-def read_temperature():
-    """Read temperature from sensor"""
-    # Replace with actual sensor code
-    # Example with DHT22 sensor:
-    # import Adafruit_DHT
-    # humidity, temperature = Adafruit_DHT.read_retry(Adafruit_DHT.DHT22, 4)
-    # return temperature
-    
-    return round(random.uniform(15, 35), 1)  # Dummy value
+```javascript
+// Function to get readings from actual sensors
+function getSensorReadings() {
+    // Replace with code to read from your actual sensors
+    // This is just a placeholder example
+    return {
+        temperature: readTemperatureSensor(),
+        humidity: readHumiditySensor(),
+        soil_temperature: readSoilTemperatureSensor(),
+        soil_moisture: readSoilMoistureSensor(),
+        livestock_temperature: readLivestockTemperatureSensor()
+    };
+}
 ```
-
-Replace the dummy implementations with code that reads from your actual sensors.
 
 ## Troubleshooting
 
