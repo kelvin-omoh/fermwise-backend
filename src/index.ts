@@ -10,6 +10,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { analyzeFarmData } from './monitoring';
+import http from 'http';
+import { Server } from 'socket.io';
 
 // Load environment variables immediately
 dotenv.config();
@@ -109,7 +111,16 @@ const verifyFirebaseConnection = async () => {
 
 // Initialize Express
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
+
+// Create HTTP server and Socket.io instance
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: '*', // Allow all origins for development
+        methods: ['GET', 'POST']
+    }
+});
 
 /**
  * Type Extensions
@@ -361,6 +372,22 @@ app.post('/api/device/readings', async (req, res) => {
             const livestockTempDocRef = await addDoc(sensorReadingsCollection, livestockTempReading);
             readings.push({ id: livestockTempDocRef.id, ...livestockTempReading });
         }
+
+        // Emit real-time data to all connected clients
+        io.emit('sensor_data', {
+            serial_number,
+            farm_id,
+            timestamp: timestamp.toDate(),
+            readings
+        });
+
+        // Also emit to device-specific room
+        io.to(`device_${serial_number}`).emit('device_data', {
+            serial_number,
+            farm_id,
+            timestamp: timestamp.toDate(),
+            readings
+        });
 
         // Return success response with all readings
         res.status(201).json({
@@ -1993,15 +2020,158 @@ app.post('/api/device/readings', async (req, res) => {
 // // Add monitoring routes
 // app.use('/api/monitoring', monitoringRoutes);
 
-// Start server
-app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}`);
+// Socket.io connection handler
+io.on('connection', (socket) => {
+    console.log('New client connected:', socket.id);
 
-    // Verify Firebase connection on startup
-    const isConnected = await verifyFirebaseConnection();
-    if (isConnected) {
-        console.log('🚀 Server is fully operational');
-    } else {
-        console.warn('⚠️ Server started but Firebase connection is not working');
-    }
+    // Handle device registration
+    socket.on('register_device', (data) => {
+        console.log('Device registered:', data);
+        // You can store device information in a database if needed
+        socket.join(`device_${data.serial_number}`); // Join a room specific to this device
+    });
+
+    // Handle direct sensor data from Socket.io
+    socket.on('sensor_data', async (data) => {
+        try {
+            console.log('Received sensor data via Socket.io:', data);
+
+            const {
+                serial_number,
+                temperature,
+                humidity,
+                soil_temperature,
+                soil_moisture,
+                livestock_temperature
+            } = data;
+
+            // Validate required fields
+            if (!serial_number) {
+                socket.emit('error', {
+                    error: 'Missing required fields',
+                    required: ['serial_number']
+                });
+                return;
+            }
+
+            // Use a single farm ID for all readings
+            const farm_id = process.env.DEFAULT_FARM_ID || 'farm_001';
+
+            // Create timestamp for the reading
+            const timestamp = Timestamp.now();
+
+            // Create sensor readings collection reference
+            const sensorReadingsCollection = collection(db, 'sensor_readings');
+
+            // Create individual readings for each sensor type
+            const readings = [];
+
+            // Add temperature reading if provided
+            if (temperature !== undefined && temperature !== null) {
+                const tempReading = {
+                    serial_number,
+                    farm_id,
+                    type: 'temperature',
+                    value: parseFloat(temperature),
+                    unit: '°C',
+                    timestamp
+                };
+                const tempDocRef = await addDoc(sensorReadingsCollection, tempReading);
+                readings.push({ id: tempDocRef.id, ...tempReading });
+            }
+
+            // Add humidity reading if provided
+            if (humidity !== undefined && humidity !== null) {
+                const humidityReading = {
+                    serial_number,
+                    farm_id,
+                    type: 'humidity',
+                    value: parseFloat(humidity),
+                    unit: '%',
+                    timestamp
+                };
+                const humidityDocRef = await addDoc(sensorReadingsCollection, humidityReading);
+                readings.push({ id: humidityDocRef.id, ...humidityReading });
+            }
+
+            // Add soil temperature reading if provided
+            if (soil_temperature !== undefined && soil_temperature !== null) {
+                const soilTempReading = {
+                    serial_number,
+                    farm_id,
+                    type: 'soil_temperature',
+                    value: parseFloat(soil_temperature),
+                    unit: '°C',
+                    timestamp
+                };
+                const soilTempDocRef = await addDoc(sensorReadingsCollection, soilTempReading);
+                readings.push({ id: soilTempDocRef.id, ...soilTempReading });
+            }
+
+            // Add soil moisture reading if provided
+            if (soil_moisture !== undefined && soil_moisture !== null) {
+                const soilMoistureReading = {
+                    serial_number,
+                    farm_id,
+                    type: 'soil_moisture',
+                    value: parseFloat(soil_moisture),
+                    unit: '%',
+                    timestamp
+                };
+                const soilMoistureDocRef = await addDoc(sensorReadingsCollection, soilMoistureReading);
+                readings.push({ id: soilMoistureDocRef.id, ...soilMoistureReading });
+            }
+
+            // Add livestock temperature reading if provided
+            if (livestock_temperature !== undefined && livestock_temperature !== null) {
+                const livestockTempReading = {
+                    serial_number,
+                    farm_id,
+                    type: 'livestock_temperature',
+                    value: parseFloat(livestock_temperature),
+                    unit: '°C',
+                    timestamp
+                };
+                const livestockTempDocRef = await addDoc(sensorReadingsCollection, livestockTempReading);
+                readings.push({ id: livestockTempDocRef.id, ...livestockTempReading });
+            }
+
+            // Emit real-time data to all connected clients
+            io.emit('sensor_data', {
+                serial_number,
+                farm_id,
+                timestamp: timestamp.toDate(),
+                readings
+            });
+
+            // Also emit to device-specific room
+            io.to(`device_${serial_number}`).emit('device_data', {
+                serial_number,
+                farm_id,
+                timestamp: timestamp.toDate(),
+                readings
+            });
+
+            // Send acknowledgment back to the device
+            socket.emit('sensor_data_ack', {
+                success: true,
+                message: 'Sensor readings recorded successfully',
+                timestamp: timestamp.toDate()
+            });
+
+        } catch (error) {
+            console.error('Error processing sensor data via Socket.io:', error);
+            socket.emit('error', { error: 'Failed to record sensor readings' });
+        }
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+    });
+});
+
+// Start the server
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
